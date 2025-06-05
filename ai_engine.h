@@ -17,6 +17,12 @@
 // 위치별 가중치 테이블 (코너가 가장 좋고, 가장자리는 약간 좋음)
 extern short POSITION_WEIGHTS[BOARD_SIZE][BOARD_SIZE];
 
+// Evaluation weights
+#define PIECE_COUNT_WEIGHT 10
+#define MOBILITY_WEIGHT 5
+#define STABILITY_WEIGHT 20
+#define POSITIONAL_WEIGHT_FACTOR 1 // Factor to scale existing positional weights
+
 // Transposition Table 엔트리
 typedef struct {
     unsigned long long hash;

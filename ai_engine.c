@@ -6,6 +6,10 @@
 #include <stdbool.h>
 
 #if defined(__aarch64__)
+// WARNING: The aarch64 assembly version of evaluateBoard below uses a simpler
+// evaluation based only on positional weights. It does not include piece count,
+// mobility, or stability. For improved AI, this should ideally be updated
+// to match the logic in the C versions or a C fallback should be used.
 // ------------------------------
 // 취급주의 어셈블리 건들이지말것
 // ------------------------------
@@ -86,22 +90,34 @@ bool isCorner(int r, int c) {
 
 
 int evaluateBoard(const GameBoard *board, char player) {
-    int player_score = 0;
-    int opponent_score = 0;
     char opponent = (player == RED_PLAYER) ? BLUE_PLAYER : RED_PLAYER;
+    int positional_player_score = 0;
+    int positional_opponent_score = 0;
 
     for (int r = 0; r < BOARD_SIZE; r++) {
         for (int c = 0; c < BOARD_SIZE; c++) {
             char cell = board->cells[r][c];
             short weight = POSITION_WEIGHTS[r][c];
             if (cell == player) {
-                player_score += weight;
+                positional_player_score += weight;
             } else if (cell == opponent) {
-                opponent_score += weight;
+                positional_opponent_score += weight;
             }
         }
     }
-    return player_score - opponent_score;
+    int positional_value = (positional_player_score - positional_opponent_score) * POSITIONAL_WEIGHT_FACTOR;
+
+    int my_pieces = (player == RED_PLAYER) ? board->redCount : board->blueCount;
+    int opp_pieces = (player == RED_PLAYER) ? board->blueCount : board->redCount;
+    int piece_diff_score = (my_pieces - opp_pieces) * PIECE_COUNT_WEIGHT;
+
+    int my_mobility = getMobility(board, player);
+    int opponent_mobility = getMobility(board, opponent);
+    int mobility_score = (my_mobility - opponent_mobility) * MOBILITY_WEIGHT;
+
+    int stability_score = getStability(board, player) * STABILITY_WEIGHT; // Only player's stability considered for now
+
+    return positional_value + piece_diff_score + mobility_score + stability_score;
 }
 
 #else
@@ -113,22 +129,34 @@ bool isCorner(int r, int c) {
 }
 
 int evaluateBoard(const GameBoard *board, char player) {
-    int player_score = 0;
-    int opponent_score = 0;
     char opponent = (player == RED_PLAYER) ? BLUE_PLAYER : RED_PLAYER;
+    int positional_player_score = 0;
+    int positional_opponent_score = 0;
 
     for (int r = 0; r < BOARD_SIZE; r++) {
         for (int c = 0; c < BOARD_SIZE; c++) {
             char cell = board->cells[r][c];
             short weight = POSITION_WEIGHTS[r][c];
             if (cell == player) {
-                player_score += weight;
+                positional_player_score += weight;
             } else if (cell == opponent) {
-                opponent_score += weight;
+                positional_opponent_score += weight;
             }
         }
     }
-    return player_score - opponent_score;
+    int positional_value = (positional_player_score - positional_opponent_score) * POSITIONAL_WEIGHT_FACTOR;
+
+    int my_pieces = (player == RED_PLAYER) ? board->redCount : board->blueCount;
+    int opp_pieces = (player == RED_PLAYER) ? board->blueCount : board->redCount;
+    int piece_diff_score = (my_pieces - opp_pieces) * PIECE_COUNT_WEIGHT;
+
+    int my_mobility = getMobility(board, player);
+    int opponent_mobility = getMobility(board, opponent);
+    int mobility_score = (my_mobility - opponent_mobility) * MOBILITY_WEIGHT;
+
+    int stability_score = getStability(board, player) * STABILITY_WEIGHT; // Only player's stability considered for now
+
+    return positional_value + piece_diff_score + mobility_score + stability_score;
 }
 #endif
 
@@ -591,6 +619,29 @@ Move findBestMove(AIEngine *engine, const GameBoard *board, char player) {
         
         Move current_best = { 0 };  
         int current_best_value = NEG_INFINITY_VAL;
+
+        // Try to prioritize a killer move
+        Move killer_m = findKillerMove(&temp_board, player); // findKillerMove is from winning_strategy.h
+        if (killer_m.player != 0 && (killer_m.sourceRow != 0 || killer_m.sourceCol != 0 || killer_m.targetRow != 0 || killer_m.targetCol != 0)) { // Check if a valid killer move was found
+            // Search for the killer move in the general moves list and bring it to the front
+            for (int k_idx = 0; k_idx < move_count; k_idx++) {
+                if (moves[k_idx].sourceRow == killer_m.sourceRow &&
+                    moves[k_idx].sourceCol == killer_m.sourceCol &&
+                    moves[k_idx].targetRow == killer_m.targetRow &&
+                    moves[k_idx].targetCol == killer_m.targetCol &&
+                    moves[k_idx].player == killer_m.player) {
+
+                    // Swap killer_move to the front (moves[0])
+                    if (k_idx > 0) {
+                        Move temp_move_for_swap = moves[0];
+                        moves[0] = moves[k_idx];
+                        moves[k_idx] = temp_move_for_swap;
+                        printf("Killer move prioritized: (%d,%d) to (%d,%d)\n", killer_m.sourceRow, killer_m.sourceCol, killer_m.targetRow, killer_m.targetCol);
+                    }
+                    break; // Found and swapped (or already at front)
+                }
+            }
+        }
         
         for (int i = 0; i < move_count; i++) {
             if (isTimeUp(engine)) break;
@@ -620,6 +671,14 @@ Move findBestMove(AIEngine *engine, const GameBoard *board, char player) {
 // 승리 보장 이동 생성 (메인 함수)
 Move generateWinningMove(const GameBoard *board, char player) {
     printf("=== 강력한 AI 엔진 시작 ===\n");
+
+    // 오프닝 북 확인
+    Move opening_move = checkOpeningBook(board, player);
+    if (opening_move.sourceRow != 0 || opening_move.targetRow != 0) { // 0,0,0,0이 아니면 유효한 오프닝 수
+        printf("오프닝 북 이동 사용!\n");
+        return opening_move;
+    }
+
     // 종반이면 완전 계산 사용
     if (isEndgamePhase(board)) {
         printf("종반 단계 - 완전 계산 시작...\n");
