@@ -622,7 +622,7 @@ Move findBestMove(AIEngine *engine, const GameBoard *board, char player) {
 
         // Try to prioritize a killer move
         Move killer_m = findKillerMove(&temp_board, player); // findKillerMove is from winning_strategy.h
-        if (killer_m.player != 0 && (killer_m.sourceRow != 0 || killer_m.sourceCol != 0 || killer_m.targetRow != 0 || killer_m.targetCol != 0)) { // Check if a valid killer move was found
+        if (isValidMove(&temp_board, &killer_m)) { // Check if a valid killer move was found
             // Search for the killer move in the general moves list and bring it to the front
             for (int k_idx = 0; k_idx < move_count; k_idx++) {
                 if (moves[k_idx].sourceRow == killer_m.sourceRow &&
@@ -674,7 +674,7 @@ Move generateWinningMove(const GameBoard *board, char player) {
 
     // 오프닝 북 확인
     Move opening_move = checkOpeningBook(board, player);
-    if (opening_move.sourceRow != 0 || opening_move.targetRow != 0) { // 0,0,0,0이 아니면 유효한 오프닝 수
+    if (isValidMove(board, &opening_move)) {
         printf("오프닝 북 이동 사용!\n");
         return opening_move;
     }
