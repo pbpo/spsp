@@ -145,7 +145,8 @@ int hasValidMove(const GameBoard *board, char player) {
                         int mr = r + dRow[d];
                         int mc = c + dCol[d];
                         if(board->cells[mr][mc] == RED_PLAYER ||
-                           board->cells[mr][mc] == BLUE_PLAYER)
+                           board->cells[mr][mc] == BLUE_PLAYER ||
+                           board->cells[mr][mc] == BLOCKED_CELL)
                             continue;
                     }
                     if(board->cells[nr][nc] == EMPTY_CELL)
@@ -176,7 +177,8 @@ int isValidMove(const GameBoard *board, Move *move) {
     if(maxD == 2) {
         int mr = r1 + dr/2, mc = c1 + dc/2;
         if(board->cells[mr][mc] == RED_PLAYER ||
-           board->cells[mr][mc] == BLUE_PLAYER)
+           board->cells[mr][mc] == BLUE_PLAYER ||
+           board->cells[mr][mc] == BLOCKED_CELL)
             return 0;
     }
     return 1;

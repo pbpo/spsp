@@ -5,11 +5,34 @@
 #include <time.h>
 #include <stdbool.h>
 
+// Helper function to determine the game phase
+int get_game_phase(const GameBoard *board) {
+    // Ensure board->emptyCount is up-to-date if relying on it.
+    // Alternatively, manually count empty cells if GameBoard struct might not be updated by all callers.
+    // For now, assume board->emptyCount is reliable.
+    int empty_tiles = 0;
+    for (int r = 0; r < BOARD_SIZE; ++r) {
+        for (int c = 0; c < BOARD_SIZE; ++c) {
+            if (board->cells[r][c] == EMPTY_CELL) {
+                empty_tiles++;
+            }
+        }
+    }
+    // Thresholds based on opponent's code (example: >40 early, 15-40 mid, <=15 late)
+    if (empty_tiles > 40) return PHASE_EARLY;
+    if (empty_tiles > 15) return PHASE_MID; // Adjusted from opponent's LATE_GAME_THRESHOLD for clarity
+    return PHASE_LATE;
+}
+
 #if defined(__aarch64__)
 // WARNING: The aarch64 assembly version of evaluateBoard below uses a simpler
-// evaluation based only on positional weights. It does not include piece count,
-// mobility, or stability. For improved AI, this should ideally be updated
-// to match the logic in the C versions or a C fallback should be used.
+// evaluation based only on positional weights. It does NOT correctly handle
+// BLOCKED_CELLs (it may misinterpret them depending on its logic focused only on
+// player/opponent pieces vs empty for its positional calculation) and does not
+// include piece count, full mobility (blocked cell aware), stability (blocked cell
+// aware), or game phase specific evaluation. For improved AI, this should
+// ideally be updated to match the logic in the C versions, or a C fallback
+// should be used.
 // ------------------------------
 // 취급주의 어셈블리 건들이지말것
 // ------------------------------
@@ -36,7 +59,7 @@ bool isCorner(int r, int c) {
     return result;
 }
 
-int evaluateBoard(const GameBoard *board, char player) {
+int evaluateBoard(const GameBoard *board, char player, int game_phase) {
     int player_score = 0;
     int opponent_score = 0;
     char opponent = (player == RED_PLAYER) ? BLUE_PLAYER : RED_PLAYER;
@@ -89,10 +112,32 @@ bool isCorner(int r, int c) {
 }
 
 
-int evaluateBoard(const GameBoard *board, char player) {
+int evaluateBoard(const GameBoard *board, char player, int game_phase) {
     char opponent = (player == RED_PLAYER) ? BLUE_PLAYER : RED_PLAYER;
     int positional_player_score = 0;
     int positional_opponent_score = 0;
+
+    int current_piece_weight;
+    int current_mobility_weight;
+    int current_stability_weight;
+    int current_positional_factor;
+
+    if (game_phase == PHASE_EARLY) {
+        current_piece_weight = PIECE_COUNT_WEIGHT_EARLY;
+        current_mobility_weight = MOBILITY_WEIGHT_EARLY;
+        current_stability_weight = STABILITY_WEIGHT_EARLY;
+        current_positional_factor = POSITIONAL_WEIGHT_FACTOR_EARLY;
+    } else if (game_phase == PHASE_MID) {
+        current_piece_weight = PIECE_COUNT_WEIGHT_MID;
+        current_mobility_weight = MOBILITY_WEIGHT_MID;
+        current_stability_weight = STABILITY_WEIGHT_MID;
+        current_positional_factor = POSITIONAL_WEIGHT_FACTOR_MID;
+    } else { // PHASE_LATE
+        current_piece_weight = PIECE_COUNT_WEIGHT_LATE;
+        current_mobility_weight = MOBILITY_WEIGHT_LATE;
+        current_stability_weight = STABILITY_WEIGHT_LATE;
+        current_positional_factor = POSITIONAL_WEIGHT_FACTOR_LATE;
+    }
 
     for (int r = 0; r < BOARD_SIZE; r++) {
         for (int c = 0; c < BOARD_SIZE; c++) {
@@ -105,17 +150,17 @@ int evaluateBoard(const GameBoard *board, char player) {
             }
         }
     }
-    int positional_value = (positional_player_score - positional_opponent_score) * POSITIONAL_WEIGHT_FACTOR;
+    int positional_value = (positional_player_score - positional_opponent_score) * current_positional_factor;
 
     int my_pieces = (player == RED_PLAYER) ? board->redCount : board->blueCount;
     int opp_pieces = (player == RED_PLAYER) ? board->blueCount : board->redCount;
-    int piece_diff_score = (my_pieces - opp_pieces) * PIECE_COUNT_WEIGHT;
+    int piece_diff_score = (my_pieces - opp_pieces) * current_piece_weight;
 
     int my_mobility = getMobility(board, player);
     int opponent_mobility = getMobility(board, opponent);
-    int mobility_score = (my_mobility - opponent_mobility) * MOBILITY_WEIGHT;
+    int mobility_score = (my_mobility - opponent_mobility) * current_mobility_weight;
 
-    int stability_score = getStability(board, player) * STABILITY_WEIGHT; // Only player's stability considered for now
+    int stability_score = getStability(board, player) * current_stability_weight; // Only player's stability considered for now
 
     return positional_value + piece_diff_score + mobility_score + stability_score;
 }
@@ -128,10 +173,32 @@ bool isCorner(int r, int c) {
     return (r == 0 || r == BOARD_SIZE - 1) && (c == 0 || c == BOARD_SIZE - 1);
 }
 
-int evaluateBoard(const GameBoard *board, char player) {
+int evaluateBoard(const GameBoard *board, char player, int game_phase) {
     char opponent = (player == RED_PLAYER) ? BLUE_PLAYER : RED_PLAYER;
     int positional_player_score = 0;
     int positional_opponent_score = 0;
+
+    int current_piece_weight;
+    int current_mobility_weight;
+    int current_stability_weight;
+    int current_positional_factor;
+
+    if (game_phase == PHASE_EARLY) {
+        current_piece_weight = PIECE_COUNT_WEIGHT_EARLY;
+        current_mobility_weight = MOBILITY_WEIGHT_EARLY;
+        current_stability_weight = STABILITY_WEIGHT_EARLY;
+        current_positional_factor = POSITIONAL_WEIGHT_FACTOR_EARLY;
+    } else if (game_phase == PHASE_MID) {
+        current_piece_weight = PIECE_COUNT_WEIGHT_MID;
+        current_mobility_weight = MOBILITY_WEIGHT_MID;
+        current_stability_weight = STABILITY_WEIGHT_MID;
+        current_positional_factor = POSITIONAL_WEIGHT_FACTOR_MID;
+    } else { // PHASE_LATE
+        current_piece_weight = PIECE_COUNT_WEIGHT_LATE;
+        current_mobility_weight = MOBILITY_WEIGHT_LATE;
+        current_stability_weight = STABILITY_WEIGHT_LATE;
+        current_positional_factor = POSITIONAL_WEIGHT_FACTOR_LATE;
+    }
 
     for (int r = 0; r < BOARD_SIZE; r++) {
         for (int c = 0; c < BOARD_SIZE; c++) {
@@ -144,17 +211,17 @@ int evaluateBoard(const GameBoard *board, char player) {
             }
         }
     }
-    int positional_value = (positional_player_score - positional_opponent_score) * POSITIONAL_WEIGHT_FACTOR;
+    int positional_value = (positional_player_score - positional_opponent_score) * current_positional_factor;
 
     int my_pieces = (player == RED_PLAYER) ? board->redCount : board->blueCount;
     int opp_pieces = (player == RED_PLAYER) ? board->blueCount : board->redCount;
-    int piece_diff_score = (my_pieces - opp_pieces) * PIECE_COUNT_WEIGHT;
+    int piece_diff_score = (my_pieces - opp_pieces) * current_piece_weight;
 
     int my_mobility = getMobility(board, player);
     int opponent_mobility = getMobility(board, opponent);
-    int mobility_score = (my_mobility - opponent_mobility) * MOBILITY_WEIGHT;
+    int mobility_score = (my_mobility - opponent_mobility) * current_mobility_weight;
 
-    int stability_score = getStability(board, player) * STABILITY_WEIGHT; // Only player's stability considered for now
+    int stability_score = getStability(board, player) * current_stability_weight; // Only player's stability considered for now
 
     return positional_value + piece_diff_score + mobility_score + stability_score;
 }
@@ -345,7 +412,7 @@ S_CHECK_MOB:
                     if (s == 2) {
                         int mr = r + dRow[d];
                         int mc = c + dCol[d];
-                        if (board->cells[mr][mc] == RED_PLAYER || board->cells[mr][mc] == BLUE_PLAYER) goto INC_S_MOB;
+                        if (board->cells[mr][mc] == RED_PLAYER || board->cells[mr][mc] == BLUE_PLAYER || board->cells[mr][mc] == BLOCKED_CELL) goto INC_S_MOB;
                     }
                     if (board->cells[nr][nc] == EMPTY_CELL) mobility++;
                 }
@@ -438,7 +505,7 @@ S_CHECK_VM:
                     if (s == 2) {
                         int mr = r + dRow[d];
                         int mc = c + dCol[d];
-                        if (board->cells[mr][mc] == RED_PLAYER || board->cells[mr][mc] == BLUE_PLAYER) goto INC_S_VM;
+                        if (board->cells[mr][mc] == RED_PLAYER || board->cells[mr][mc] == BLUE_PLAYER || board->cells[mr][mc] == BLOCKED_CELL) goto INC_S_VM;
                     }
                     if (board->cells[nr][nc] == EMPTY_CELL) {
                         moves[*count].player = player;
@@ -474,18 +541,18 @@ VM_DONE:
 
 // Minimax with Alpha-Beta Pruning
 int minimax(AIEngine *engine, GameBoard *board, int depth, int alpha, int beta, 
-           char maximizing_player, char original_player) {
+           char maximizing_player, char original_player, int game_phase) {
     
     engine->nodes_searched++;
     
     // 시간 초과 확인
     if (isTimeUp(engine)) {
-        return evaluateBoard(board, original_player);
+        return evaluateBoard(board, original_player, game_phase);
     }
     
     // 터미널 노드 또는 최대 깊이 도달
     if (depth == 0 || hasGameEnded(board)) {
-        return evaluateBoard(board, original_player);
+        return evaluateBoard(board, original_player, game_phase);
     }
     
     // Transposition Table 조회
@@ -514,11 +581,11 @@ int minimax(AIEngine *engine, GameBoard *board, int depth, int alpha, int beta,
         int opp_count;
         getAllValidMoves(board, opponent, opp_moves, &opp_count);
         if (opp_count == 0) {
-            return evaluateBoard(board, original_player);
+            return evaluateBoard(board, original_player, game_phase);
         }
         
         // 상대 턴으로 넘어감
-        return minimax(engine, board, depth - 1, alpha, beta, opponent, original_player);
+        return minimax(engine, board, depth - 1, alpha, beta, opponent, original_player, game_phase);
     }
     
     Move best_move;
@@ -538,7 +605,7 @@ int minimax(AIEngine *engine, GameBoard *board, int depth, int alpha, int beta,
             applyMove(&temp_board, &moves[i]);
             
             char next_player = (maximizing_player == RED_PLAYER) ? BLUE_PLAYER : RED_PLAYER;
-            int eval = minimax(engine, &temp_board, depth - 1, alpha, beta, next_player, original_player);
+            int eval = minimax(engine, &temp_board, depth - 1, alpha, beta, next_player, original_player, game_phase);
             
             if (eval > max_eval) {
                 max_eval = eval;
@@ -568,7 +635,7 @@ int minimax(AIEngine *engine, GameBoard *board, int depth, int alpha, int beta,
             applyMove(&temp_board, &moves[i]);
             
             char next_player = (maximizing_player == RED_PLAYER) ? BLUE_PLAYER : RED_PLAYER;
-            int eval = minimax(engine, &temp_board, depth - 1, alpha, beta, next_player, original_player);
+            int eval = minimax(engine, &temp_board, depth - 1, alpha, beta, next_player, original_player, game_phase);
             
             if (eval < min_eval) {
                 min_eval = eval;
@@ -620,6 +687,8 @@ Move findBestMove(AIEngine *engine, const GameBoard *board, char player) {
         Move current_best = { 0 };  
         int current_best_value = NEG_INFINITY_VAL;
 
+        int current_game_phase = get_game_phase(&temp_board);
+
         // Try to prioritize a killer move
         Move killer_m = findKillerMove(&temp_board, player); // findKillerMove is from winning_strategy.h
         if (isValidMove(&temp_board, &killer_m)) { // Check if a valid killer move was found
@@ -642,7 +711,7 @@ Move findBestMove(AIEngine *engine, const GameBoard *board, char player) {
                 }
             }
         }
-        
+
         for (int i = 0; i < move_count; i++) {
             if (isTimeUp(engine)) break;
             
@@ -650,9 +719,9 @@ Move findBestMove(AIEngine *engine, const GameBoard *board, char player) {
             memcpy(&move_board, &temp_board, sizeof(GameBoard));
             applyMove(&move_board, &moves[i]);
             
-            char opponent = (player == RED_PLAYER) ? BLUE_PLAYER : RED_PLAYER;
+            char opponent_player = (player == RED_PLAYER) ? BLUE_PLAYER : RED_PLAYER; // Renamed to avoid conflict
             int value = minimax(engine, &move_board, depth - 1, NEG_INFINITY_VAL, INFINITY_VAL, 
-                              opponent, player);
+                              opponent_player, player, current_game_phase);
             
             if (value > current_best_value) {
                 current_best_value = value;
